@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
-    QSpinBox, QSplitter, QStatusBar, QVBoxLayout, QWidget,
+    QSpinBox, QSplitter, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt, QUrl, Signal, QObject
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
@@ -20,6 +20,20 @@ from app.core.downloader import MangaDownloader, DownloadSignals
 from app.core.models import Manga, Chapter, DownloadStatus, ExportFormat
 from app.sites.registry import get_site_for_url
 from app.utils.logger import logger
+
+def _log_color(msg: str) -> str:
+    if "✓" in msg or "done" in msg.lower() or "finished" in msg.lower() or "saved" in msg.lower():
+        return "#4CAF50"   # green — success
+    if "✗" in msg or "failed" in msg.lower() or "error" in msg.lower():
+        return "#F44336"   # red — error
+    if "⚠" in msg or "warning" in msg.lower() or "cancelled" in msg.lower():
+        return "#FF9800"   # orange — warning
+    if "Downloading" in msg:
+        return "#64B5F6"   # light blue — in progress
+    if "Fetching" in msg or "Fetched" in msg:
+        return "#B0BEC5"   # grey-blue — info
+    return "#E0E0E0"       # default light grey
+
 
 _STATUS_ICON = {
     DownloadStatus.PENDING: "⌛",
@@ -139,10 +153,12 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(QLabel("Range:"))
         self.range_from = QSpinBox()
         self.range_from.setMinimum(1)
-        self.range_from.setFixedWidth(70)
+        self.range_from.setMinimumWidth(80)
+        self.range_from.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.range_to = QSpinBox()
         self.range_to.setMinimum(1)
-        self.range_to.setFixedWidth(70)
+        self.range_to.setMinimumWidth(80)
+        self.range_to.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.range_apply_btn = QPushButton("Apply")
         self.range_apply_btn.setFixedWidth(60)
         toolbar.addWidget(self.range_from)
@@ -222,9 +238,10 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Log")
         box.setMaximumHeight(180)
         col = QVBoxLayout(box)
-        self.log_view = QPlainTextEdit()
+        self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.setMaximumBlockCount(500)
+        self.log_view.document().setMaximumBlockCount(500)
+        self.log_view.setStyleSheet("font-family: monospace; font-size: 12px;")
         col.addWidget(self.log_view)
         return box
 
@@ -415,7 +432,9 @@ class MainWindow(QMainWindow):
     # ─── progress / log slots (called from Qt signals → safe on UI thread) ───
 
     def _append_log(self, msg: str) -> None:
-        self.log_view.appendPlainText(msg)
+        color = _log_color(msg)
+        escaped = msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        self.log_view.append(f'<span style="color:{color};">{escaped}</span>')
 
     def _update_total_progress(self, done: int, total: int) -> None:
         self.total_progress.setRange(0, total)
@@ -437,4 +456,4 @@ class MainWindow(QMainWindow):
 
     def _log(self, msg: str) -> None:
         ts = datetime.datetime.now().strftime("%H:%M:%S")
-        self.log_view.appendPlainText(f"[{ts}] {msg}")
+        self._append_log(f"[{ts}] {msg}")

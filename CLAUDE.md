@@ -78,6 +78,9 @@ These are invariants — do not break them without explicit user approval.
 - **Default output dir**: Resolved at import time via `Path(__file__).parents[2] / "output" / "manga"` in `config.py` — always relative to the project root.
 - **CLI args**: `main.py` parses `--output-dir` and `--format` via `argparse`, loads config, overrides fields, then passes the config to `MainWindow`. `run.bat` / `run.sh` forward all args via `%*` / `"$@"`.
 - **run.bat**: Uses `pythonw.exe` + `start ""` — always launches without a console window, no option to change.
+- **Log widget**: `QTextEdit` (not `QPlainTextEdit`) so colored HTML can be appended. Color routing lives in `_log_color(msg)` at module level in `mainWindow.py` — update that function when adding new message types, never inline color logic.
+- **Format hint**: A small grey `QLabel` is rendered below the Format/Output bar (`_build_output_bar`) describing each export format. Keep it in sync if formats change.
+- **Input sizing**: Use `setMinimumWidth` + `QSizePolicy.Expanding` for any input that displays variable-length content (chapter numbers, paths). Never use `setFixedWidth` for these — it clips large values.
 
 ---
 
@@ -89,6 +92,7 @@ These are invariants — do not break them without explicit user approval.
 - **Naming**: `snake_case` for files, functions, variables; `PascalCase` for classes
 - **Commits**: conventional commits — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
 - **No comments** unless the WHY is non-obvious (hidden constraint, workaround, subtle invariant)
+- **Qt sizing**: use `setFixedWidth` only for icon buttons (📁, ⚙️). All text inputs and spinboxes use `setMinimumWidth` + `QSizePolicy.Expanding` so they scale with content and window resize.
 
 ---
 
