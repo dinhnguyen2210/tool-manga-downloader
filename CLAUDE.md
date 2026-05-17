@@ -1,38 +1,20 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+Rules and context for Claude Code when working in this repository.
 
-## Project
+---
 
-`tool_manga_downloader` — Desktop tool for downloading manga from Vietnamese websites for offline reading.
+## Context
+
+`tool_manga_downloader` — PySide6 desktop app that downloads manga from Vietnamese websites for offline reading.
 
 **Stack**: Python 3.10+, PySide6 (Qt6 GUI), aiohttp (async HTTP), BeautifulSoup4 (HTML parsing), qasync (asyncio ↔ Qt bridge)
 
-## Getting Started
+---
+
+## Dev Commands
 
 ```powershell
-# Create & activate virtual environment (Windows)
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Install dependencies
-pip install -r requirements.txt
-
-# (Dev tools: testing, linting)
-pip install -r requirements-dev.txt
-
-# Run the application (recommended — no console window)
-.\run.bat
-
-# Run via bash
-bash run.sh
-
-# Run directly (console visible)
-python main.py
-
-# CLI options
-python main.py --output-dir "D:\Manga" --format cbz
-
 # Run tests
 pytest
 
@@ -45,95 +27,86 @@ ruff check app/ tests/
 mypy app/
 ```
 
+> For installation and running the app, see README.md.
+
+---
+
 ## Architecture
 
 ```
-manga_downloader/
-├── main.py                     # Entry point: QApplication + qasync event loop + CLI args
-├── run.bat                     # Windows launcher (background, no console)
+tool_manga_downloader/
+├── main.py                     # Entry point: QApplication + qasync event loop + CLI args (--output-dir, --format)
+├── run.bat                     # Windows launcher — always runs background via pythonw.exe
 ├── run.sh                      # Bash launcher
-├── requirements.txt
-├── requirements-dev.txt
-├── assets/                     # Icons, images
 ├── output/manga/               # Default download output (gitignored)
 ├── app/
 │   ├── core/
-│   │   ├── models.py           # Manga, Chapter dataclasses + Enums
-│   │   ├── config.py           # AppConfig dataclass, load/save JSON
-│   │   ├── downloader.py       # Async download engine (aiohttp + semaphore)
+│   │   ├── models.py           # Manga, Chapter dataclasses + ExportFormat, DownloadStatus enums
+│   │   ├── config.py           # AppConfig dataclass; default_output_dir = project_root/output/manga
+│   │   ├── downloader.py       # MangaDownloader + DownloadSignals; output path includes format subfolder
 │   │   └── exporter.py         # Export to CBZ / PDF / EPUB / Folder
 │   ├── sites/
-│   │   ├── base.py             # BaseSite abstract class
-│   │   ├── registry.py         # Plugin registry + get_site_for_url()
+│   │   ├── base.py             # BaseSite ABC
+│   │   ├── registry.py         # SITES list + get_site_for_url()
 │   │   └── truyenqqko.py       # TruyenQQKo site plugin
 │   ├── ui/
-│   │   ├── mainWindow.py       # Main QMainWindow with all UI widgets
+│   │   ├── mainWindow.py       # QMainWindow; accepts optional AppConfig via __init__(config=)
 │   │   └── settingsDialog.py   # Settings QDialog
 │   └── utils/
-│       ├── naming.py           # Zero-padded filenames, sanitize_filename()
-│       ├── headers.py          # User-Agent rotation, default headers
-│       └── logger.py           # Logging setup
+│       ├── naming.py           # zero_pad(), sanitize_filename(), image_filename()
+│       ├── headers.py          # USER_AGENTS list, get_random_ua(), get_default_headers()
+│       └── logger.py           # logger singleton
 └── tests/
-    ├── conftest.py
+    ├── conftest.py             # Fixtures: sample_manga_html, sample_chapter_html
     ├── fixtures/               # Saved HTML for offline parser tests
     ├── test_models.py
     ├── test_naming.py
     └── test_parser_truyenqqko.py
 ```
 
+---
+
 ## Key Design Decisions
 
-- **qasync**: The asyncio event loop IS the Qt event loop. All async ops run in the main thread — no threading issues.
-- **DownloadSignals**: Plain callback object (not Qt signals) passed into MangaDownloader so it can update UI without depending on Qt.
-- **Plugin system**: Each site subclasses `BaseSite`. Add to `SITES` list in `registry.py` to register.
-- **Resume**: Before downloading each image, check if file already exists and has size > 0. Skip if so.
-- **Output structure**: Images saved to `output/manga/<MangaTitle>/<format>/Chapter_XXXX/001.jpg`. Exported files (CBZ/PDF/EPUB) land in `output/manga/<MangaTitle>/<format>/`.
-- **Default output dir**: `[project_root]/output/manga` — resolved via `Path(__file__).parents[2]` in `config.py`.
-- **CLI args**: `main.py` accepts `--output-dir` and `--format` to override config at launch time. `run.bat` / `run.sh` forward `%*` / `$@` so args pass through.
-- **run.bat**: Uses `pythonw.exe` + `start` so the app always launches without a console window.
+These are invariants — do not break them without explicit user approval.
 
-## Config file locations
+- **qasync**: The asyncio event loop IS the Qt event loop. Never use `asyncio.run()` inside the UI thread. All async ops run in the main thread.
+- **DownloadSignals**: Plain callback object (not Qt signals) so `MangaDownloader` stays testable without a Qt app.
+- **Plugin system**: Each site subclasses `BaseSite`. Register by adding to `SITES` list in `registry.py`. Never hardcode site logic outside a plugin file.
+- **Resume**: Skip an image if the file already exists and `stat().st_size > 100`. Do not re-download.
+- **Output structure**: `<output_dir>/<MangaTitle>/<format>/Chapter_XXXX/001.jpg`. The format subfolder (`cbz`, `pdf`, `epub`, `folder`) is always present.
+- **Default output dir**: Resolved at import time via `Path(__file__).parents[2] / "output" / "manga"` in `config.py` — always relative to the project root.
+- **CLI args**: `main.py` parses `--output-dir` and `--format` via `argparse`, loads config, overrides fields, then passes the config to `MainWindow`. `run.bat` / `run.sh` forward all args via `%*` / `"$@"`.
+- **run.bat**: Uses `pythonw.exe` + `start ""` — always launches without a console window, no option to change.
+
+---
+
+## Conventions
+
+- **Imports**: relative inside `app/`, absolute from project root in `main.py` and `tests/`
+- **Type hints**: required on all public functions and class attributes
+- **Async**: `async def` + `asyncSlot` for Qt-connected coroutines; CPU work goes to `run_in_executor`
+- **Naming**: `snake_case` for files, functions, variables; `PascalCase` for classes
+- **Commits**: conventional commits — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
+- **No comments** unless the WHY is non-obvious (hidden constraint, workaround, subtle invariant)
+
+---
+
+## Config file location
 
 - Windows: `%USERPROFILE%\.mangadl\config.json`
 - macOS/Linux: `~/.mangadl/config.json`
 
-## Build Progress
+---
 
-### ✅ Phase 1 — Foundation (DONE)
-- [x] CLAUDE.md updated with full plan
-- [x] `requirements.txt`
-- [x] `requirements-dev.txt`
-- [x] `app/core/models.py` — Manga, Chapter, ExportFormat, DownloadStatus
-- [x] `app/core/config.py` — AppConfig, load_config(), save_config()
-- [x] `app/utils/naming.py` — zero_pad(), sanitize_filename(), image_filename()
-- [x] `app/utils/headers.py` — USER_AGENTS list, get_random_ua(), get_default_headers()
-- [x] `app/utils/logger.py` — logger singleton
+## Build Status
 
-### ✅ Phase 2 — Site plugins (DONE)
-- [x] `app/sites/base.py` — BaseSite ABC
-- [x] `app/sites/registry.py` — SITES list, get_site_for_url()
-- [x] `app/sites/truyenqqko.py` — Full parser with BeautifulSoup
+All 5 phases complete. Ongoing changes tracked via git log.
 
-### ✅ Phase 3 — Download engine (DONE)
-- [x] `app/core/downloader.py` — MangaDownloader, DownloadSignals, async image fetch
-- [x] `app/core/exporter.py` — CBZ, PDF, EPUB, Folder export
-
-### ✅ Phase 4 — UI (DONE)
-- [x] `app/ui/settingsDialog.py` — Settings QDialog
-- [x] `app/ui/mainWindow.py` — Full main window with all controls
-- [x] `main.py` — Entry point with qasync event loop
-
-### ✅ Phase 5 — Tests (DONE)
-- [x] `tests/conftest.py` — fixtures: sample_manga_html, sample_chapter_html
-- [x] `tests/test_models.py` — Chapter, Manga, enums
-- [x] `tests/test_naming.py` — zero_pad, sanitize_filename, chapter_folder_name
-- [x] `tests/test_parser_truyenqqko.py` — offline HTML parser tests with mocks
-- [x] `pytest.ini` — asyncio_mode = auto
-
-### Status: ✅ COMPLETE — All 5 phases done
-
-## Resume Instructions
-
-If build was interrupted, check "Build Progress" above.
-Find the last ✅ completed phase and the first unchecked item in the next phase.
-Continue from there — all previous phases' files are already created.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Foundation (models, config, utils) | ✅ |
+| 2 | Site plugins (base, registry, truyenqqko) | ✅ |
+| 3 | Download engine + exporter | ✅ |
+| 4 | UI (mainWindow, settingsDialog, main.py) | ✅ |
+| 5 | Tests (models, naming, parser) | ✅ |

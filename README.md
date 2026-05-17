@@ -16,16 +16,24 @@
 
 ---
 
-## ⚠️ Disclaimer
-
-> Tool này được tạo cho **mục đích học tập** và **đọc offline cá nhân**.
-> 
-> - ❌ Không sử dụng để redistribute, đăng tải lại nội dung có bản quyền
-> - ❌ Không sử dụng cho mục đích thương mại
-> - ❌ Không bắn quá nhiều request làm sập server (đã có rate limit mặc định)
-> - ✅ Hãy ủng hộ tác giả gốc bằng cách đọc trên site chính thức nếu có thể
-> 
-> **Người dùng tự chịu trách nhiệm pháp lý khi sử dụng tool này.**
+> [!CAUTION]
+> ## Bản quyền & Trách nhiệm pháp lý
+>
+> **Truyện tranh là tác phẩm sáng tạo được bảo hộ bản quyền.** Tác giả và nhà xuất bản đã đầu tư thời gian, công sức để tạo ra những tác phẩm này — việc tải và phân phối trái phép gây thiệt hại trực tiếp đến thu nhập của họ.
+>
+> Tool này chỉ được phép dùng để:
+> - ✅ **Đọc offline cá nhân** — tải về máy của chính mình để đọc khi không có mạng
+> - ✅ **Học tập kỹ thuật** — nghiên cứu cách hoạt động của web scraping, async Python, Qt GUI
+>
+> Tuyệt đối **không** được phép:
+> - ❌ **Phân phối lại** nội dung đã tải — upload lên drive, telegram, web, forum
+> - ❌ **Sử dụng thương mại** — bán, kiếm tiền từ nội dung có bản quyền dưới bất kỳ hình thức nào
+> - ❌ **Tấn công server** — bắn request liên tục, bỏ qua rate limit, làm gián đoạn dịch vụ
+> - ❌ **Bypass paywall** — tải nội dung yêu cầu trả phí mà không trả
+>
+> **Hãy ủng hộ tác giả** bằng cách đọc trên site chính thức, mua bản in, hoặc ủng hộ qua các kênh chính thống nếu có.
+>
+> *Người dùng hoàn toàn tự chịu trách nhiệm pháp lý về mọi hành vi sử dụng tool này. Tác giả tool không chịu trách nhiệm cho bất kỳ hành vi vi phạm bản quyền nào.*
 
 ---
 
@@ -102,8 +110,8 @@
 ### Bước 1: Clone repository
 
 ```bash
-git clone https://github.com/<your-username>/manga-downloader.git
-cd manga-downloader
+git clone https://github.com/dinhnguyen2210/tool-manga-downloader.git
+cd tool-manga-downloader
 ```
 
 ### Bước 2: Tạo virtual environment
