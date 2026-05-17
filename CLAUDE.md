@@ -12,6 +12,12 @@ Rules and context for Claude Code when working in this repository.
 
 ---
 
+## Git Rules
+
+- **Never commit or push unless the user explicitly asks.** Make all code/doc changes freely, but only run `git add` / `git commit` / `git push` when the user says to.
+
+---
+
 ## Documentation Rules
 
 After every change that affects behavior, structure, or conventions:
