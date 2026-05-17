@@ -18,12 +18,19 @@ Rules and context for Claude Code when working in this repository.
 
 ---
 
+## Pre-task Rule
+
+Before making any code change, **read `ARCHITECTURE.md` first**. This ensures every change is consistent with the existing layers, flows, and component boundaries.
+
+---
+
 ## Documentation Rules
 
 After every change that affects behavior, structure, or conventions:
 
 - **CLAUDE.md**: update Architecture, Key Design Decisions, or Conventions to reflect the change. Add a new rule if a decision was made that Claude should remember for future sessions.
-- **README.md**: update any user-facing section that the change affects — install steps, usage, output structure, config, hotkeys, etc. Skip if the change is purely internal (refactor, implementation detail with no visible effect).
+- **ARCHITECTURE.md**: update the affected layer, component table, or data flow diagram. This is the primary reference for system structure — keep it accurate at all times.
+- **README.md**: update any user-facing section that the change affects — install steps, usage, output structure, config, hotkeys, etc. Skip if the change is purely internal (refactor, implementation detail with no visible effect), check need to update if update code affects change UI
 
 When in doubt: if a future Claude or a new contributor would be confused without the update, update it.
 

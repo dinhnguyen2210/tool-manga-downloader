@@ -10,7 +10,7 @@ class AppConfig:
     concurrent_downloads: int = 5
     delay_seconds: float = 1.5
     retry_count: int = 3
-    output_format: str = "cbz"
+    output_format: str = "pdf"
     default_output_dir: str = str(Path(__file__).resolve().parents[2] / "output" / "manga")
     user_agent: Optional[str] = None
     proxy: Optional[str] = None

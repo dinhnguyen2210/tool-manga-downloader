@@ -47,6 +47,7 @@ def _export_cbz(chapter_dir: Path, cbz_path: Path) -> None:
 
 
 def _export_pdf(chapter_dir: Path, pdf_path: Path) -> None:
+    import io
     import img2pdf
     from PIL import Image
 
@@ -57,15 +58,27 @@ def _export_pdf(chapter_dir: Path, pdf_path: Path) -> None:
 
     # img2pdf does not support WEBP → convert on the fly to temporary JPEG bytes
     img_data: list[bytes] = []
+    first_size: tuple[int, int] | None = None
+
     for img_path in images:
         if img_path.suffix.lower() == ".webp":
             with Image.open(img_path) as im:
-                import io
+                if first_size is None:
+                    first_size = im.size
                 buf = io.BytesIO()
                 im.convert("RGB").save(buf, "JPEG", quality=95)
                 img_data.append(buf.getvalue())
         else:
             img_data.append(img_path.read_bytes())
+            if first_size is None:
+                with Image.open(img_path) as im:
+                    first_size = im.size
+
+    # Blank white page at the end — signals chapter end to the reader
+    w, h = first_size if first_size else (800, 1200)
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), color=(255, 255, 255)).save(buf, "JPEG", quality=85)
+    img_data.append(buf.getvalue())
 
     with open(pdf_path, "wb") as f:
         f.write(img2pdf.convert(img_data))

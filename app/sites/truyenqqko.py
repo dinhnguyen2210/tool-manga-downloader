@@ -11,6 +11,13 @@ from app.core.models import Manga, Chapter
 from app.utils.headers import get_default_headers, get_random_ua
 from app.utils.logger import logger
 
+_VI_CHAPTER_RE = re.compile(r'^(chương|chap|ch)\s*', re.IGNORECASE)
+
+
+def _normalize_chapter_title(title: str) -> str:
+    """Replace Vietnamese/short chapter prefixes with 'Chapter'."""
+    return _VI_CHAPTER_RE.sub(lambda m: "Chapter ", title).strip()
+
 
 class TruyenQQKo(BaseSite):
     name = "truyenqqko"
@@ -29,6 +36,13 @@ class TruyenQQKo(BaseSite):
         author = self._parse_author(soup)
         description = self._parse_description(soup)
         chapters = self._parse_chapters(soup)
+
+        if not chapters:
+            raise ValueError(
+                "Không tìm thấy danh sách chapter.\n"
+                "URL có thể là trang chapter, trang chủ, hoặc trang tìm kiếm — "
+                "hãy dùng URL trang thông tin truyện (ví dụ: /truyen-tranh/<tên-truyện>)."
+            )
 
         return Manga(
             title=title,
@@ -55,7 +69,12 @@ class TruyenQQKo(BaseSite):
         return "Unknown"
 
     def _parse_cover(self, soup: BeautifulSoup) -> Optional[str]:
-        for selector in (".col-image img", ".story-detail img", ".info-img img"):
+        for selector in (
+            ".book_avatar img",
+            ".col-image img",
+            ".story-detail img",
+            ".info-img img",
+        ):
             el = soup.select_one(selector)
             if el:
                 src = el.get("src") or el.get("data-src", "")
@@ -106,7 +125,7 @@ class TruyenQQKo(BaseSite):
                 continue
             if not href.startswith("http"):
                 href = self.base_url.rstrip("/") + "/" + href.lstrip("/")
-            chap_title = a.get_text(strip=True)
+            chap_title = _normalize_chapter_title(a.get_text(strip=True))
             number = self._extract_chapter_number(chap_title, href)
             chapters.append(Chapter(title=chap_title, url=href, number=number))
 

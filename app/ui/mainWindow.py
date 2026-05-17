@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout,
+    QCheckBox, QComboBox, QCompleter, QFileDialog, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-    QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
     QSpinBox, QSplitter, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import Qt, QUrl, Signal, QObject
+from PySide6.QtCore import Qt, QStringListModel, QUrl, Signal, Slot
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from qasync import asyncSlot
@@ -20,6 +20,9 @@ from app.core.downloader import MangaDownloader, DownloadSignals
 from app.core.models import Manga, Chapter, DownloadStatus, ExportFormat
 from app.sites.registry import get_site_for_url
 from app.utils.logger import logger
+from app.utils.history import load_history, save_url as save_history_url
+from app.utils.naming import sanitize_filename, zero_pad
+from app.utils.manga_io import save_manga_info
 
 def _log_color(msg: str) -> str:
     if "✓" in msg or "done" in msg.lower() or "finished" in msg.lower() or "saved" in msg.lower():
@@ -48,6 +51,7 @@ class ChapterItem(QListWidgetItem):
     def __init__(self, chapter: Chapter) -> None:
         super().__init__()
         self.chapter = chapter
+        self._on_disk = False
         self.setFlags(self.flags() | Qt.ItemIsUserCheckable)
         self.setCheckState(Qt.Checked)
         self._refresh_text()
@@ -56,9 +60,14 @@ class ChapterItem(QListWidgetItem):
         self.chapter.status = status
         self._refresh_text()
 
+    def mark_existing(self, exists: bool) -> None:
+        self._on_disk = exists
+        self._refresh_text()
+
     def _refresh_text(self) -> None:
         icon = _STATUS_ICON.get(self.chapter.status, "")
-        self.setText(f"{self.chapter.title}  {icon}")
+        badge = "  ⚠ ON DISK" if self._on_disk else ""
+        self.setText(f"{self.chapter.title}{badge}  {icon}")
 
 
 class MainWindow(QMainWindow):
@@ -75,7 +84,9 @@ class MainWindow(QMainWindow):
         self.manga: Optional[Manga] = None
         self.downloader: Optional[MangaDownloader] = None
         self._chapter_items: dict[int, ChapterItem] = {}  # id(chapter) → item
+        self._last_selected: list[Chapter] = []
         self._nam = QNetworkAccessManager(self)
+        self._history_model = QStringListModel(load_history(), self)
 
         self._build_ui()
         self._connect_signals()
@@ -105,6 +116,13 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Paste manga URL here…  (e.g. https://truyenqqko.com/truyen-tranh/...)")
+
+        completer = QCompleter(self._history_model, self)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.url_input.setCompleter(completer)
+
         self.fetch_btn = QPushButton("🔍 Fetch")
         self.fetch_btn.setFixedWidth(90)
         row.addWidget(QLabel("URL:"))
@@ -123,18 +141,33 @@ class MainWindow(QMainWindow):
         self.cover_label.setText("No cover")
 
         info_col = QVBoxLayout()
+        info_col.setSpacing(3)
+
         self.title_label = QLabel("—")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.title_label.setStyleSheet("font-size: 15px; font-weight: bold;")
         self.title_label.setWordWrap(True)
-        self.author_label = QLabel("Author: —")
-        self.chapter_count_label = QLabel("Chapters: —")
-        self.site_label = QLabel("Site: —")
+
+        self.author_label = QLabel("✍️  —")
+        self.chapter_count_label = QLabel("📑 —")
+        self.site_label = QLabel("🌐 —")
+
+        self.url_label = QLabel("🔗 —")
+        self.url_label.setStyleSheet("color: #888; font-size: 11px;")
+        self.url_label.setWordWrap(True)
+        self.url_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self.desc_edit = QTextEdit()
+        self.desc_edit.setReadOnly(True)
+        self.desc_edit.setMaximumHeight(70)
+        self.desc_edit.setPlaceholderText("No description")
+        self.desc_edit.setStyleSheet("font-size: 12px; background: transparent; border: none;")
 
         info_col.addWidget(self.title_label)
         info_col.addWidget(self.author_label)
         info_col.addWidget(self.chapter_count_label)
         info_col.addWidget(self.site_label)
-        info_col.addStretch()
+        info_col.addWidget(self.url_label)
+        info_col.addWidget(self.desc_edit)
 
         row.addWidget(self.cover_label)
         row.addLayout(info_col)
@@ -182,7 +215,7 @@ class MainWindow(QMainWindow):
         self.format_combo = QComboBox()
         for fmt in ExportFormat:
             self.format_combo.addItem(fmt.value.upper(), fmt.value)
-        self.format_combo.setCurrentIndex(1)  # CBZ default
+        self.format_combo.setCurrentIndex(2)  # PDF default
         row.addWidget(self.format_combo)
 
         row.addWidget(QLabel("Output:"))
@@ -257,6 +290,8 @@ class MainWindow(QMainWindow):
         self.select_none_btn.clicked.connect(self._select_none)
         self.range_apply_btn.clicked.connect(self._apply_range)
         self.url_input.returnPressed.connect(self._on_fetch_clicked)
+        self.format_combo.currentIndexChanged.connect(self._mark_existing_chapters)
+        self.output_dir_input.editingFinished.connect(self._mark_existing_chapters)
 
         # Internal async → UI signals
         self._sig_log.connect(self._append_log)
@@ -280,6 +315,10 @@ class MainWindow(QMainWindow):
         if not url:
             return
 
+        if not url.startswith(("http://", "https://")):
+            self._log("⚠ Invalid URL — must start with http:// or https://")
+            return
+
         self.fetch_btn.setEnabled(False)
         self.download_btn.setEnabled(False)
         self.chapter_list.clear()
@@ -296,6 +335,13 @@ class MainWindow(QMainWindow):
             self.manga = manga
             self._populate_manga_info(manga)
             self._log(f"Fetched {len(manga.chapters)} chapters: {manga.title}")
+
+            manga_dir = Path(self.output_dir_input.text()) / sanitize_filename(manga.title)
+            info_path = save_manga_info(manga, manga_dir)
+            self._log(f"Saved manga info → {info_path}")
+
+            updated = save_history_url(url)
+            self._history_model.setStringList(updated)
 
         except Exception as e:
             self._log(f"Error fetching manga: {e}")
@@ -320,6 +366,7 @@ class MainWindow(QMainWindow):
         output_dir = Path(self.output_dir_input.text().strip() or self.config.default_output_dir)
         export_format = self.format_combo.currentData()
 
+        self._last_selected = selected
         self.download_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.total_progress.setRange(0, len(selected))
@@ -394,6 +441,8 @@ class MainWindow(QMainWindow):
         self.author_label.setText(f"✍️  {manga.author or 'Unknown'}")
         self.chapter_count_label.setText(f"📑 {len(manga.chapters)} chapters")
         self.site_label.setText(f"🌐 {manga.site_name}")
+        self.url_label.setText(f"🔗 {manga.url}")
+        self.desc_edit.setPlainText(manga.description or "")
 
         self.chapter_list.clear()
         self._chapter_items.clear()
@@ -408,9 +457,22 @@ class MainWindow(QMainWindow):
             self._chapter_items[id(chapter)] = item
 
         self.download_btn.setEnabled(True)
+        self._mark_existing_chapters()
 
         if manga.cover_url:
             self._load_cover(manga.cover_url, manga.url)
+
+    def _mark_existing_chapters(self) -> None:
+        if not self.manga:
+            return
+        output_dir = Path(self.output_dir_input.text())
+        fmt = self.format_combo.currentData()
+        manga_dir = output_dir / sanitize_filename(self.manga.title) / fmt
+        for i in range(self.chapter_list.count()):
+            item: ChapterItem = self.chapter_list.item(i)  # type: ignore[assignment]
+            chapter_dir = manga_dir / f"Chapter_{zero_pad(int(item.chapter.number), 4)}"
+            exists = chapter_dir.is_dir() and any(chapter_dir.iterdir())
+            item.mark_existing(exists)
 
     def _load_cover(self, cover_url: str, referer: str) -> None:
         req = QNetworkRequest(QUrl(cover_url))
@@ -431,28 +493,53 @@ class MainWindow(QMainWindow):
 
     # ─── progress / log slots (called from Qt signals → safe on UI thread) ───
 
+    @Slot(str)
     def _append_log(self, msg: str) -> None:
         color = _log_color(msg)
         escaped = msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         self.log_view.append(f'<span style="color:{color};">{escaped}</span>')
 
+    @Slot(int, int)
     def _update_total_progress(self, done: int, total: int) -> None:
         self.total_progress.setRange(0, total)
         self.total_progress.setValue(done)
 
+    @Slot(int, int)
     def _update_chapter_progress(self, done: int, total: int) -> None:
         self.chapter_progress.setRange(0, total)
         self.chapter_progress.setValue(done)
 
+    @Slot(int, str)
     def _update_chapter_status_slot(self, chapter_id: int, status_value: str) -> None:
         item = self._chapter_items.get(chapter_id)
         if item:
             item.set_status(DownloadStatus(status_value))
 
+    @Slot()
     def _on_download_finished_slot(self) -> None:
         self.download_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
-        self._log("Download finished.")
+
+        failed = [c for c in self._last_selected if c.status == DownloadStatus.FAILED]
+        done = [c for c in self._last_selected if c.status == DownloadStatus.DONE]
+        total = len(self._last_selected)
+
+        self._log("─" * 40)
+        if not failed:
+            self._log(f"✓ Download finished — {done}/{total} chapters completed.")
+        else:
+            self._log(f"✗ Download finished — {len(failed)}/{total} chapters FAILED:")
+            for ch in failed:
+                self._log(f"  ✗ {ch.title}")
+            self._log("─" * 40)
+
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Download Errors")
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText(f"{len(failed)} chapter(s) failed to download.")
+            details = "\n".join(f"• {ch.title}" for ch in failed)
+            msg.setDetailedText(details)
+            msg.exec()
 
     def _log(self, msg: str) -> None:
         ts = datetime.datetime.now().strftime("%H:%M:%S")
