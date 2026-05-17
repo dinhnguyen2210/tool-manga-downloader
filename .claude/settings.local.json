@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(cd \"D:\\\\AI_Working_place\\\\tool_manga_downloader\"; $p = Start-Process -FilePath \".\\\\venv\\\\Scripts\\\\python.exe\" -ArgumentList \"main.py\" -PassThru -WindowStyle Normal; Start-Sleep -Seconds 3; if \\($p.HasExited\\) { Write-Host \"EXITED with code: $\\($p.ExitCode\\)\"; Get-Content err.txt -ErrorAction SilentlyContinue } else { Write-Host \"Running, PID: $\\($p.Id\\)\" })",
+      "PowerShell(Get-Process *)",
+      "PowerShell(cd \"D:\\\\AI_Working_place\\\\tool_manga_downloader\"; $env:PYTHONPATH = \"D:\\\\AI_Working_place\\\\tool_manga_downloader\"; $p = Start-Process \".\\\\venv\\\\Scripts\\\\pythonw.exe\" \"main.py\" -PassThru -Wait -RedirectStandardError \"err_gui.txt\" -WindowStyle Normal; Write-Host \"Exit code: $\\($p.ExitCode\\)\"; Get-Content \"err_gui.txt\" -ErrorAction SilentlyContinue)",
+      "PowerShell(cd \"D:\\\\AI_Working_place\\\\tool_manga_downloader\"; .\\\\venv\\\\Scripts\\\\python.exe main.py > run_stdout.txt 2> run_stderr.txt; Write-Host \"Exit: $LASTEXITCODE\")",
+      "Skill(update-config)"
+    ]
+  }
+}
