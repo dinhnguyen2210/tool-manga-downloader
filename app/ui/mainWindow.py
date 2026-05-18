@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
     QSpinBox, QSplitter, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import Qt, QStringListModel, QUrl, Signal, Slot
+from PySide6.QtCore import QEvent, Qt, QStringListModel, QUrl, Signal, Slot
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from qasync import asyncSlot
@@ -21,7 +21,7 @@ from app.core.models import Manga, Chapter, DownloadStatus, ExportFormat
 from app.sites.registry import get_site_for_url
 from app.utils.logger import logger
 from app.utils.history import load_history, save_url as save_history_url
-from app.utils.naming import sanitize_filename, zero_pad
+from app.utils.naming import sanitize_filename, chapter_stem
 from app.utils.manga_io import save_manga_info
 
 def _log_color(msg: str) -> str:
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
     _sig_log = Signal(str)
     _sig_total_progress = Signal(int, int)
     _sig_chapter_progress = Signal(int, int)
-    _sig_chapter_status = Signal(int, str)   # chapter id(obj), status value
+    _sig_chapter_status = Signal(object, str)  # chapter id(obj), status value
     _sig_download_finished = Signal()
 
     def __init__(self, config: Optional[AppConfig] = None) -> None:
@@ -117,11 +117,12 @@ class MainWindow(QMainWindow):
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Paste manga URL here…  (e.g. https://truyenqqko.com/truyen-tranh/...)")
 
-        completer = QCompleter(self._history_model, self)
-        completer.setCaseSensitivity(Qt.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchContains)
-        completer.setCompletionMode(QCompleter.PopupCompletion)
-        self.url_input.setCompleter(completer)
+        self._url_completer = QCompleter(self._history_model, self)
+        self._url_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self._url_completer.setFilterMode(Qt.MatchContains)
+        self._url_completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.url_input.setCompleter(self._url_completer)
+        self.url_input.installEventFilter(self)
 
         self.fetch_btn = QPushButton("🔍 Fetch")
         self.fetch_btn.setFixedWidth(90)
@@ -181,8 +182,11 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout()
         self.select_all_btn = QPushButton("✓ All")
         self.select_none_btn = QPushButton("✗ None")
+        self.select_new_btn = QPushButton("↓ New")
+        self.select_new_btn.setToolTip("Select only chapters not yet downloaded")
         toolbar.addWidget(self.select_all_btn)
         toolbar.addWidget(self.select_none_btn)
+        toolbar.addWidget(self.select_new_btn)
         toolbar.addWidget(QLabel("Range:"))
         self.range_from = QSpinBox()
         self.range_from.setMinimum(1)
@@ -199,6 +203,9 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.range_to)
         toolbar.addWidget(self.range_apply_btn)
         toolbar.addStretch()
+        self.selection_label = QLabel("0 / 0 selected")
+        self.selection_label.setStyleSheet("color: gray; font-size: 11px;")
+        toolbar.addWidget(self.selection_label)
 
         self.chapter_list = QListWidget()
         self.chapter_list.setAlternatingRowColors(True)
@@ -288,7 +295,9 @@ class MainWindow(QMainWindow):
         self.settings_btn.clicked.connect(self._on_settings_clicked)
         self.select_all_btn.clicked.connect(self._select_all)
         self.select_none_btn.clicked.connect(self._select_none)
+        self.select_new_btn.clicked.connect(self._select_new)
         self.range_apply_btn.clicked.connect(self._apply_range)
+        self.chapter_list.itemChanged.connect(self._update_selection_label)
         self.url_input.returnPressed.connect(self._on_fetch_clicked)
         self.format_combo.currentIndexChanged.connect(self._mark_existing_chapters)
         self.output_dir_input.editingFinished.connect(self._mark_existing_chapters)
@@ -306,6 +315,12 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Escape"), self, self._on_cancel_clicked)
         QShortcut(QKeySequence("Ctrl+,"), self, self._on_settings_clicked)
         QShortcut(QKeySequence("Return"), self, self._on_fetch_clicked)
+
+    def eventFilter(self, obj: object, event: QEvent) -> bool:
+        if obj is self.url_input and event.type() == QEvent.Type.MouseButtonPress:
+            self._url_completer.setCompletionPrefix(self.url_input.text())
+            self._url_completer.complete()
+        return super().eventFilter(obj, event)
 
     # ─── button handlers ─────────────────────────────────────────────────────
 
@@ -423,6 +438,20 @@ class MainWindow(QMainWindow):
         for i in range(self.chapter_list.count()):
             self.chapter_list.item(i).setCheckState(Qt.Unchecked)
 
+    def _select_new(self) -> None:
+        for i in range(self.chapter_list.count()):
+            item: ChapterItem = self.chapter_list.item(i)  # type: ignore[assignment]
+            state = Qt.Unchecked if item._on_disk else Qt.Checked
+            item.setCheckState(state)
+
+    def _update_selection_label(self) -> None:
+        total = self.chapter_list.count()
+        checked = sum(
+            1 for i in range(total)
+            if self.chapter_list.item(i).checkState() == Qt.Checked
+        )
+        self.selection_label.setText(f"{checked} / {total} selected")
+
     def _apply_range(self) -> None:
         lo = self.range_from.value()
         hi = self.range_to.value()
@@ -430,7 +459,7 @@ class MainWindow(QMainWindow):
             lo, hi = hi, lo
         for i in range(self.chapter_list.count()):
             item: ChapterItem = self.chapter_list.item(i)  # type: ignore[assignment]
-            n = int(item.chapter.number)
+            n = item.chapter.number
             state = Qt.Checked if lo <= n <= hi else Qt.Unchecked
             item.setCheckState(state)
 
@@ -458,6 +487,7 @@ class MainWindow(QMainWindow):
 
         self.download_btn.setEnabled(True)
         self._mark_existing_chapters()
+        self._update_selection_label()
 
         if manga.cover_url:
             self._load_cover(manga.cover_url, manga.url)
@@ -470,7 +500,7 @@ class MainWindow(QMainWindow):
         manga_dir = output_dir / sanitize_filename(self.manga.title) / fmt
         for i in range(self.chapter_list.count()):
             item: ChapterItem = self.chapter_list.item(i)  # type: ignore[assignment]
-            chapter_dir = manga_dir / f"Chapter_{zero_pad(int(item.chapter.number), 4)}"
+            chapter_dir = manga_dir / f"Chapter_{chapter_stem(item.chapter.number)}"
             exists = chapter_dir.is_dir() and any(chapter_dir.iterdir())
             item.mark_existing(exists)
 
@@ -509,7 +539,6 @@ class MainWindow(QMainWindow):
         self.chapter_progress.setRange(0, total)
         self.chapter_progress.setValue(done)
 
-    @Slot(int, str)
     def _update_chapter_status_slot(self, chapter_id: int, status_value: str) -> None:
         item = self._chapter_items.get(chapter_id)
         if item:
@@ -519,6 +548,7 @@ class MainWindow(QMainWindow):
     def _on_download_finished_slot(self) -> None:
         self.download_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
+        self._mark_existing_chapters()
 
         failed = [c for c in self._last_selected if c.status == DownloadStatus.FAILED]
         done = [c for c in self._last_selected if c.status == DownloadStatus.DONE]

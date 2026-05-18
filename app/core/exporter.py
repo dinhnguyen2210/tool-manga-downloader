@@ -3,7 +3,7 @@ import zipfile
 from pathlib import Path
 
 from app.core.models import Chapter
-from app.utils.naming import zero_pad, sanitize_filename
+from app.utils.naming import zero_pad, sanitize_filename, chapter_stem
 from app.utils.logger import logger
 
 
@@ -21,7 +21,7 @@ def export_chapter(
     fmt: str,
 ) -> None:
     manga_out_dir.mkdir(parents=True, exist_ok=True)
-    chap_stem = f"Chapter_{zero_pad(int(chapter.number), 4)}"
+    chap_stem = f"Chapter_{chapter_stem(chapter.number)}"
 
     if fmt == "cbz":
         _export_cbz(chapter_dir, manga_out_dir / f"{chap_stem}.cbz")
@@ -47,8 +47,6 @@ def _export_cbz(chapter_dir: Path, cbz_path: Path) -> None:
 
 
 def _export_pdf(chapter_dir: Path, pdf_path: Path) -> None:
-    import io
-    import img2pdf
     from PIL import Image
 
     images = _collect_images(chapter_dir)
@@ -56,32 +54,25 @@ def _export_pdf(chapter_dir: Path, pdf_path: Path) -> None:
         logger.warning(f"No images for PDF: {chapter_dir}")
         return
 
-    # img2pdf does not support WEBP → convert on the fly to temporary JPEG bytes
-    img_data: list[bytes] = []
-    first_size: tuple[int, int] | None = None
-
+    pages: list[Image.Image] = []
     for img_path in images:
-        if img_path.suffix.lower() == ".webp":
-            with Image.open(img_path) as im:
-                if first_size is None:
-                    first_size = im.size
-                buf = io.BytesIO()
-                im.convert("RGB").save(buf, "JPEG", quality=95)
-                img_data.append(buf.getvalue())
-        else:
-            img_data.append(img_path.read_bytes())
-            if first_size is None:
-                with Image.open(img_path) as im:
-                    first_size = im.size
+        im = Image.open(img_path)
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        pages.append(im)
 
     # Blank white page at the end — signals chapter end to the reader
-    w, h = first_size if first_size else (800, 1200)
-    buf = io.BytesIO()
-    Image.new("RGB", (w, h), color=(255, 255, 255)).save(buf, "JPEG", quality=85)
-    img_data.append(buf.getvalue())
+    w, h = pages[0].size
+    pages.append(Image.new("RGB", (w, h), color=(255, 255, 255)))
 
-    with open(pdf_path, "wb") as f:
-        f.write(img2pdf.convert(img_data))
+    pages[0].save(
+        pdf_path,
+        format="PDF",
+        save_all=True,
+        append_images=pages[1:],
+    )
+    for im in pages:
+        im.close()
 
     logger.info(f"PDF created: {pdf_path}")
 
@@ -102,7 +93,7 @@ def export_manga_epub(
     epub_chapters: list[epub.EpubHtml] = []
 
     for chapter in chapters:
-        chap_dir = manga_dir / f"Chapter_{zero_pad(int(chapter.number), 4)}"
+        chap_dir = manga_dir / f"Chapter_{chapter_stem(chapter.number)}"
         if not chap_dir.exists():
             continue
 
@@ -123,7 +114,7 @@ def export_manga_epub(
 
         epub_chap = epub.EpubHtml(
             title=chapter.title,
-            file_name=f"chap_{int(chapter.number):04d}.xhtml",
+            file_name=f"chap_{chapter_stem(chapter.number)}.xhtml",
             lang="vi",
         )
         epub_chap.content = html_content

@@ -8,7 +8,7 @@ import aiohttp
 
 from app.core.models import Manga, Chapter, DownloadStatus
 from app.core.config import AppConfig
-from app.utils.naming import zero_pad, sanitize_filename
+from app.utils.naming import zero_pad, sanitize_filename, chapter_stem
 from app.utils.headers import get_random_ua
 from app.utils.logger import logger
 
@@ -99,7 +99,7 @@ class MangaDownloader:
             base_dir
             / sanitize_filename(manga.title)
             / export_format
-            / f"Chapter_{zero_pad(int(chapter.number), 4)}"
+            / f"Chapter_{chapter_stem(chapter.number)}"
         )
         chapter_dir.mkdir(parents=True, exist_ok=True)
         return chapter_dir

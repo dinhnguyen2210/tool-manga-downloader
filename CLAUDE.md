@@ -72,12 +72,13 @@ tool_manga_downloader/
 │   ├── sites/
 │   │   ├── base.py             # BaseSite ABC
 │   │   ├── registry.py         # SITES list + get_site_for_url()
-│   │   └── truyenqqko.py       # TruyenQQKo site plugin
+│   │   ├── truyenqqko.py       # TruyenQQKo site plugin
+│   │   └── haikyuu.py          # ReadHaikyuuCom + ReadHaikyuOnline plugins
 │   ├── ui/
 │   │   ├── mainWindow.py       # QMainWindow; accepts optional AppConfig via __init__(config=)
 │   │   └── settingsDialog.py   # Settings QDialog
 │   └── utils/
-│       ├── naming.py           # zero_pad(), sanitize_filename(), image_filename()
+│       ├── naming.py           # zero_pad(), sanitize_filename(), chapter_stem(), image_filename()
 │       ├── headers.py          # USER_AGENTS list, get_random_ua(), get_default_headers()
 │       └── logger.py           # logger singleton
 └── tests/
@@ -98,13 +99,18 @@ These are invariants — do not break them without explicit user approval.
 - **DownloadSignals**: Plain callback object (not Qt signals) so `MangaDownloader` stays testable without a Qt app.
 - **Plugin system**: Each site subclasses `BaseSite`. Register by adding to `SITES` list in `registry.py`. Never hardcode site logic outside a plugin file.
 - **Resume**: Skip an image if the file already exists and `stat().st_size > 100`. Do not re-download.
-- **Output structure**: `<output_dir>/<MangaTitle>/<format>/Chapter_XXXX/001.jpg`. The format subfolder (`cbz`, `pdf`, `epub`, `folder`) is always present.
+- **Output structure**: `<output_dir>/<MangaTitle>/<format>/Chapter_XXXX/001.jpg`. The format subfolder (`cbz`, `pdf`, `epub`, `folder`) is always present. Decimal chapters use `_` separator: chapter 12.5 → `Chapter_0012_5`.
+- **chapter_stem()**: Always use `chapter_stem(number)` from `naming.py` to build the folder/file name for a chapter — never `int(chapter.number)` or inline formatting. This handles decimal chapters (12.5 → `0012_5`) correctly.
+- **PDF export**: Uses Pillow's native `save_all` PDF writer — no `img2pdf` dependency, no 14400-unit page size limit. Blank white end page is appended via Pillow `Image.new`.
 - **Default output dir**: Resolved at import time via `Path(__file__).parents[2] / "output" / "manga"` in `config.py` — always relative to the project root.
 - **CLI args**: `main.py` parses `--output-dir` and `--format` via `argparse`, loads config, overrides fields, then passes the config to `MainWindow`. `run.bat` / `run.sh` forward all args via `%*` / `"$@"`.
 - **run.bat**: Uses `pythonw.exe` + `start ""` — always launches without a console window, no option to change.
 - **Log widget**: `QTextEdit` (not `QPlainTextEdit`) so colored HTML can be appended. Color routing lives in `_log_color(msg)` at module level in `mainWindow.py` — update that function when adding new message types, never inline color logic.
 - **Format hint**: A small grey `QLabel` is rendered below the Format/Output bar (`_build_output_bar`) describing each export format. Keep it in sync if formats change.
 - **Input sizing**: Use `setMinimumWidth` + `QSizePolicy.Expanding` for any input that displays variable-length content (chapter numbers, paths). Never use `setFixedWidth` for these — it clips large values.
+- **URL completer on click**: The URL input uses an `eventFilter` on `MainWindow` to intercept `QEvent.Type.MouseButtonPress` and call `completer.complete()` — this shows the history popup immediately on click, not only when typing.
+- **ON DISK badge**: `_mark_existing_chapters()` must be called after every event that changes on-disk state: populate, format/output dir change, and download finished. Badge shows `⚠ ON DISK` text only — no color change on the item.
+- **Selection count label**: `selection_label` in the chapter toolbar shows `X / Y selected`. Updated via `itemChanged` signal on `chapter_list` — no manual refresh needed in select/range helpers.
 
 ---
 

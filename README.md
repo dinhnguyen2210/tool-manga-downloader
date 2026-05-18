@@ -46,7 +46,9 @@
 - 📋 **Đúng thứ tự** đảm bảo chapter và ảnh sắp xếp chính xác
 - 📦 **Multi-format export**: Folder ảnh / CBZ / PDF / EPUB
 - 🔄 **Resume download** tự skip ảnh đã tải, retry tự động khi lỗi
-- 🎯 **Range selection** chọn từ chapter X đến Y, hoặc cherry-pick
+- 🎯 **Range selection** chọn từ chapter X đến Y, cherry-pick, hoặc **↓ New** tự động chọn chapter chưa tải
+- 🔢 **Decimal chapter support** chapter dạng 12.5 được lưu đúng (`Chapter_0012_5`), không bị trùng hay bỏ qua
+- 🔍 **URL history** gợi ý các URL đã fetch, hiện ngay khi click vào ô nhập
 - 🌙 **Progress tracking** real-time với progress bar tổng và phụ
 - 📝 **Logging** chi tiết, dễ debug
 - 🚫 **Cancel anytime** dừng tải bất cứ lúc nào không corrupt file
@@ -58,6 +60,8 @@
 | Site | Status | Plugin |
 |------|--------|--------|
 | ![truyenqqko](https://img.shields.io/badge/-truyenqqko.com-success) | ✅ Hoạt động | `app/sites/truyenqqko.py` |
+| ![read-haikyuu](https://img.shields.io/badge/-read--haikyuu.com-success) | ✅ Hoạt động | `app/sites/haikyuu.py` |
+| ![readhaikyu](https://img.shields.io/badge/-readhaikyu.online-success) | ✅ Hoạt động | `app/sites/haikyuu.py` |
 | ![nettruyen](https://img.shields.io/badge/-nettruyen-lightgrey) | 🚧 Coming soon | - |
 | ![blogtruyen](https://img.shields.io/badge/-blogtruyen-lightgrey) | 🚧 Coming soon | - |
 
@@ -83,7 +87,7 @@
 │              niên với khát vọng trở thành cao thủ võ lâm…   │
 ├──────────────────────────────────────────────────────────────┤
 │ Chapters                                                     │
-│  [✓ All] [✗ None]  Range: [  1  ] to [ 601 ] [Apply]       │
+│  [✓ All] [✗ None] [↓ New]  Range: [  1] to [601] [Apply]  598 / 601 selected  │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │ ☑ Chapter 1 - Khởi đầu             ⚠ ON DISK  ✅   │   │
 │  │ ☑ Chapter 2 - ...                  ⚠ ON DISK  ✅   │   │
@@ -192,9 +196,11 @@ python main.py
 2. **Paste vào ô URL** trong app, bấm **Fetch**
 3. **Chờ load** danh sách chapter (~2-5s)
 4. **Chọn chapter** muốn tải:
-   - `Select All` → tải tất cả
-   - `Range` → nhập từ chapter X đến Y
+   - `✓ All` → tải tất cả
+   - `↓ New` → tự động chọn những chapter chưa có trong folder (tiện để tải tiếp)
+   - `Range` → nhập từ chapter X đến Y, bấm Apply
    - Hoặc tick từng chapter trong bảng
+   - Số chapter đã chọn hiển thị ở góc phải toolbar (`X / Y selected`)
 5. **Chọn format export**: Folder / CBZ / PDF / EPUB
 6. **Chọn thư mục lưu** (mặc định `output/manga/` trong thư mục app)
 7. Bấm **Download** và chờ ☕
@@ -500,7 +506,7 @@ Hoặc đợi 5-10 phút rồi thử lại (Cloudflare có thể đang ban IP).
 | HTML Parse | beautifulsoup4 | 4.12+ | DOM parsing |
 | HTML Parser | lxml | 5.0+ | Fast C parser cho BS4 |
 | Image | Pillow | 10.0+ | Validate, convert ảnh |
-| PDF Export | img2pdf | 0.5+ | Convert không re-encode |
+| PDF Export | Pillow | 10.0+ | Native multi-page PDF (`save_all`) — không giới hạn kích thước trang |
 | EPUB Export | ebooklib | 0.18+ | Generate EPUB3 |
 | Async + Qt | qasync | 0.27+ | Bridge asyncio ↔ Qt |
 | Testing | pytest | 8.0+ | Test framework |
@@ -568,7 +574,7 @@ of this software and associated documentation files (the "Software")...
 - [PySide6](https://www.qt.io/qt-for-python) - Qt for Python
 - [aiohttp](https://docs.aiohttp.org/) - Async HTTP client/server
 - [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/) - HTML parsing
-- [img2pdf](https://gitlab.mister-muffin.de/josch/img2pdf) - Lossless PDF conversion
+- [Pillow](https://python-pillow.org/) - Image processing & PDF export
 - Các tác giả truyện tranh - cảm ơn vì đã sáng tác những tác phẩm tuyệt vời ❤️
 
 ---

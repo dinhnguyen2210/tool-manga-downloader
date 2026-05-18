@@ -68,11 +68,12 @@ System layers, data flows, and component responsibilities for `tool_manga_downlo
 **Key UI patterns:**
 - Internal Qt signals (`_sig_log`, `_sig_total_progress`, `_sig_chapter_progress`, `_sig_chapter_status`, `_sig_download_finished`) bridge async callbacks to the UI thread safely
 - All signal-connected methods have `@Slot(...)` decorators with explicit types
-- `QCompleter` on the URL input backed by `QStringListModel` populated from `history.json`
+- `QCompleter` on the URL input backed by `QStringListModel` populated from `history.json`; popup triggered on mouse click via `MainWindow.eventFilter` (intercepts `QEvent.Type.MouseButtonPress`), not only on typing
 - Log output uses `QTextEdit` (not `QPlainTextEdit`) so colored HTML can be appended; color routing via `_log_color()` at module level
 - Format/Output bar includes a hint `QLabel` describing each export format
 - Spinboxes use `setMinimumWidth` + `QSizePolicy.Expanding` (never `setFixedWidth`)
-- `ChapterItem.mark_existing(exists)` highlights chapters already on disk (amber text, dark orange background, `⚠ ON DISK` badge); re-runs on format or output dir change
+- `ChapterItem.mark_existing(exists)` appends `⚠ ON DISK` badge to the chapter text (no color change); re-runs on format/output dir change and after download finishes
+- Chapter toolbar has **↓ New** button that checks undownloaded chapters (where `item._on_disk` is `False`) and a `selection_label` showing `X / Y selected`, auto-updated via `itemChanged` signal
 
 ### Site Plugin Layer — `app/sites/`
 
@@ -81,6 +82,7 @@ System layers, data flows, and component responsibilities for `tool_manga_downlo
 | `base.py` | `BaseSite` ABC — defines `matches()`, `parse_manga_info()`, `parse_chapter_images()` |
 | `registry.py` | `SITES` list + `get_site_for_url(url)` — instantiates correct plugin or returns `None` |
 | `truyenqqko.py` | Concrete plugin for truyenqqko.com — BeautifulSoup HTML parsing |
+| `haikyuu.py` | Two plugins: `ReadHaikyuuCom` (read-haikyuu.com, uses WP REST API for images) and `ReadHaikyuOnline` (readhaikyu.online, HTML + Blogger CDN images); shared `_FetchMixin` for aiohttp/cloudscraper |
 
 To add a new site: subclass `BaseSite`, implement the 3 abstract methods, append the class to `SITES` in `registry.py`.
 
@@ -97,7 +99,7 @@ To add a new site: subclass `BaseSite`, implement the 3 abstract methods, append
 
 | File | Responsibility |
 |------|---------------|
-| `naming.py` | `zero_pad()`, `sanitize_filename()`, `image_filename()` |
+| `naming.py` | `zero_pad()`, `sanitize_filename()`, `chapter_stem()`, `chapter_folder_name()`, `image_filename()` — `chapter_stem(n)` handles decimal chapters: `12.5 → "0012_5"` |
 | `headers.py` | `USER_AGENTS` list, `get_random_ua()`, `get_default_headers()`, `get_image_headers()` |
 | `logger.py` | Module-level `logger` singleton (Python `logging`) |
 | `history.py` | `load_history()` / `save_url()` — URL history in `~/.mangadl/history.json`, max 30 entries, most recent first |
@@ -140,7 +142,8 @@ User clicks Download
           for each chapter:
             → site.parse_chapter_images(chapter.url)   # HTTP + parse
             → _get_chapter_dir()
-                → output_dir / MangaTitle / format / Chapter_XXXX /
+                → output_dir / MangaTitle / format / Chapter_{chapter_stem(n)} /
+                   (e.g. Chapter_0012 for ch.12, Chapter_0012_5 for ch.12.5)
             → _download_images()                        # aiohttp + semaphore
                 for each image:
                   → skip if file exists and size > 100 bytes  (resume)
@@ -189,7 +192,8 @@ output/manga/                          ← default_output_dir (config.py)
     │       └── 002.jpg
     ├── cbz/
     │   ├── Chapter_0001/              ← temp images
-    │   └── Chapter_0001.cbz           ← packed archive
+    │   ├── Chapter_0001.cbz           ← packed archive
+    │   └── Chapter_0012_5.cbz         ← decimal chapter (e.g. 12.5)
     ├── pdf/
     │   ├── Chapter_0001/
     │   └── Chapter_0001.pdf

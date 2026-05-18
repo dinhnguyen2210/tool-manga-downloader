@@ -17,12 +17,22 @@ def sanitize_filename(name: str) -> str:
     return name[:200] or "unnamed"
 
 
+def chapter_stem(number: float) -> str:
+    """Return zero-padded chapter ID: 12 → '0012', 12.5 → '0012_5'."""
+    n_int = int(number)
+    frac = round(number - n_int, 10)
+    if frac == 0.0:
+        return f"{n_int:04d}"
+    frac_str = f"{frac:.10f}".rstrip("0").lstrip("0").replace(".", "")
+    return f"{n_int:04d}_{frac_str}"
+
+
 def chapter_folder_name(number: float, title: str = "") -> str:
-    n = int(number)
+    stem = chapter_stem(number)
     if title:
         safe_title = sanitize_filename(title)
-        return f"Chapter_{zero_pad(n, 4)}_{safe_title}"
-    return f"Chapter_{zero_pad(n, 4)}"
+        return f"Chapter_{stem}_{safe_title}"
+    return f"Chapter_{stem}"
 
 
 def image_filename(index: int, ext: str = "jpg") -> str:
