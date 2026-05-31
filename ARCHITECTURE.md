@@ -69,11 +69,12 @@ System layers, data flows, and component responsibilities for `tool_manga_downlo
 - Internal Qt signals (`_sig_log`, `_sig_total_progress`, `_sig_chapter_progress`, `_sig_chapter_status`, `_sig_download_finished`) bridge async callbacks to the UI thread safely
 - All signal-connected methods have `@Slot(...)` decorators with explicit types
 - `QCompleter` on the URL input backed by `QStringListModel` populated from `history.json`; popup triggered on mouse click via `MainWindow.eventFilter` (intercepts `QEvent.Type.MouseButtonPress`), not only on typing
-- Log output uses `QTextEdit` (not `QPlainTextEdit`) so colored HTML can be appended; color routing via `_log_color()` at module level
+- Log output uses `QTextEdit` (not `QPlainTextEdit`) so colored HTML can be appended; color routing via `_kind_color(kind)` function at module level
+- Theme system: `ThemePalette` dataclass holds all theme-specific colours; `_P` is the active palette; `_make_qss()` generates QSS from `_P`; `_apply_theme(name)` rebuilds the central widget after swapping `_P`. Theme toggle button (☀/🌙) in the header saves preference to `config.json`.
 - Format/Output bar includes a hint `QLabel` describing each export format
 - Spinboxes use `setMinimumWidth` + `QSizePolicy.Expanding` (never `setFixedWidth`)
-- `ChapterItem.mark_existing(exists)` appends `⚠ ON DISK` badge to the chapter text (no color change); re-runs on format/output dir change and after download finishes
-- Chapter toolbar has **↓ New** button that checks undownloaded chapters (where `item._on_disk` is `False`) and a `selection_label` showing `X / Y selected`, auto-updated via `itemChanged` signal
+- `ChapterCard.mark_existing(exists)` shows `ON DISK` badge in gold; re-runs on format/output dir change and after download finishes
+- Chapter toolbar has **↓ New** button that checks undownloaded chapters and a `selection_label` showing `X / Y  SELECTED`, auto-updated via `chapter_grid.selection_changed` signal
 
 ### Site Plugin Layer — `app/sites/`
 
@@ -83,6 +84,7 @@ System layers, data flows, and component responsibilities for `tool_manga_downlo
 | `registry.py` | `SITES` list + `get_site_for_url(url)` — instantiates correct plugin or returns `None` |
 | `truyenqqko.py` | Concrete plugin for truyenqqko.com — BeautifulSoup HTML parsing |
 | `haikyuu.py` | Two plugins: `ReadHaikyuuCom` (read-haikyuu.com, uses WP REST API for images) and `ReadHaikyuOnline` (readhaikyu.online, HTML + Blogger CDN images); shared `_FetchMixin` for aiohttp/cloudscraper |
+| `facebook.py` | `FacebookAlbumSite` — downloads photo albums from Facebook pages. Uses Playwright (headless Chromium) to render JS-heavy pages; albums → Chapter list; photos fetched via aiohttp + Playwright session cookies; og:image used for full-res URLs. Requires `pip install playwright && playwright install chromium`. Optional cookies file: `~/.mangadl/fb_cookies.json`. |
 
 To add a new site: subclass `BaseSite`, implement the 3 abstract methods, append the class to `SITES` in `registry.py`.
 
@@ -141,16 +143,17 @@ User clicks Download
       → MangaDownloader.download_manga(manga, chapters, output_dir, format)
           for each chapter:
             → site.parse_chapter_images(chapter.url)   # HTTP + parse
-            → _get_chapter_dir()
-                → output_dir / MangaTitle / format / Chapter_{chapter_stem(n)} /
-                   (e.g. Chapter_0012 for ch.12, Chapter_0012_5 for ch.12.5)
-            → _download_images()                        # aiohttp + semaphore
+            → _chapter_dir()  → final path (not created yet)
+            → temp_dir = final_dir + ".tmp"  (created immediately)
+            → _download_images(temp_dir)                # aiohttp + semaphore
                 for each image:
-                  → skip if file exists and size > 100 bytes  (resume)
+                  → skip if file exists and size > 100 bytes  (resume in .tmp)
                   → aiohttp.get(image_url)
-                  → write bytes to Chapter_XXXX/001.jpg
-            → export_chapter() [thread pool]            # if format != "folder"
+                  → write bytes to Chapter_XXXX.tmp/001.jpg
+            → export_chapter(temp_dir) [thread pool]    # if format != "folder"
+            → temp_dir.rename(final_dir)                # atomic: .tmp → final only on full success
             → emit signals → UI updates (progress bars, chapter status, log)
+            # On failure/cancel: .tmp kept for resume next run; final dir never appears partial
             → sleep(delay_seconds)                      # rate limiting
 ```
 

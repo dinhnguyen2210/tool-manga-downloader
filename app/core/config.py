@@ -14,7 +14,7 @@ class AppConfig:
     default_output_dir: str = str(Path(__file__).resolve().parents[2] / "output" / "manga")
     user_agent: Optional[str] = None
     proxy: Optional[str] = None
-    theme: str = "dark"
+    theme: str = "system"
 
 
 def get_config_path() -> Path:

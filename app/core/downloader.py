@@ -55,20 +55,28 @@ class MangaDownloader:
                     raise ValueError("No images found in chapter")
 
                 chapter.images = images
-                chapter_dir = self._get_chapter_dir(manga, chapter, output_dir, export_format)
+                final_dir = self._chapter_dir(manga, chapter, output_dir, export_format)
+                temp_dir = final_dir.parent / (final_dir.name + ".tmp")
+                temp_dir.mkdir(parents=True, exist_ok=True)
 
-                await self._download_images(images, chapter_dir, manga.url)
+                await self._download_images(images, temp_dir, manga.url)
 
                 if export_format != "folder":
                     manga_out_dir = output_dir / sanitize_filename(manga.title) / export_format
                     await asyncio.get_event_loop().run_in_executor(
                         None,
                         _export_chapter,
-                        chapter_dir,
+                        temp_dir,
                         manga_out_dir,
                         chapter,
                         export_format,
                     )
+
+                # Atomic promotion: temp → final only after full success
+                if final_dir.exists():
+                    import shutil
+                    shutil.rmtree(final_dir)
+                temp_dir.rename(final_dir)
 
                 self._emit_chapter_status(chapter, DownloadStatus.DONE)
                 self._emit_total_progress(i + 1, total)
@@ -94,15 +102,12 @@ class MangaDownloader:
             raise ValueError(f"No plugin for URL: {manga.url}")
         return await site.parse_chapter_images(chapter.url)
 
-    def _get_chapter_dir(self, manga: Manga, chapter: Chapter, base_dir: Path, export_format: str) -> Path:
-        chapter_dir = (
-            base_dir
-            / sanitize_filename(manga.title)
-            / export_format
-            / f"Chapter_{chapter_stem(chapter.number)}"
-        )
-        chapter_dir.mkdir(parents=True, exist_ok=True)
-        return chapter_dir
+    def _chapter_dir(self, manga: Manga, chapter: Chapter, base_dir: Path, export_format: str) -> Path:
+        if chapter.folder_name:
+            stem = sanitize_filename(chapter.folder_name)
+        else:
+            stem = f"Chapter_{chapter_stem(chapter.number)}"
+        return base_dir / sanitize_filename(manga.title) / export_format / stem
 
     async def _download_images(
         self, image_urls: list[str], chapter_dir: Path, referer: str

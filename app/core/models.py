@@ -26,6 +26,7 @@ class Chapter:
     number: float = 0.0
     status: DownloadStatus = DownloadStatus.PENDING
     images: list[str] = field(default_factory=list)
+    folder_name: Optional[str] = None  # overrides Chapter_XXXX naming when set
 
 
 @dataclass

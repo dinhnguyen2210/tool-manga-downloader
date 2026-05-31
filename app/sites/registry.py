@@ -4,11 +4,13 @@ from typing import Optional
 from app.sites.base import BaseSite
 from app.sites.truyenqqko import TruyenQQKo
 from app.sites.haikyuu import ReadHaikyuuCom, ReadHaikyuOnline
+from app.sites.facebook import FacebookAlbumSite
 
 SITES: list[type[BaseSite]] = [
     TruyenQQKo,
     ReadHaikyuuCom,
     ReadHaikyuOnline,
+    FacebookAlbumSite,
 ]
 
 

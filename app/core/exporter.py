@@ -21,7 +21,7 @@ def export_chapter(
     fmt: str,
 ) -> None:
     manga_out_dir.mkdir(parents=True, exist_ok=True)
-    chap_stem = f"Chapter_{chapter_stem(chapter.number)}"
+    chap_stem = sanitize_filename(chapter.folder_name) if chapter.folder_name else f"Chapter_{chapter_stem(chapter.number)}"
 
     if fmt == "cbz":
         _export_cbz(chapter_dir, manga_out_dir / f"{chap_stem}.cbz")
